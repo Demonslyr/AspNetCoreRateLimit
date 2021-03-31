@@ -1,8 +1,8 @@
-﻿using Microsoft.AspNetCore.Http;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 
 namespace AspNetCoreRateLimit
 {
@@ -24,6 +24,7 @@ namespace AspNetCoreRateLimit
             _options = options;
             _processor = processor;
             _config = config;
+            _config.RegisterResolvers();
         }
 
         public async Task Invoke(HttpContext context)
@@ -36,7 +37,7 @@ namespace AspNetCoreRateLimit
             }
 
             // compute identity from request
-            var identity = ResolveIdentity(context);
+            var identity = await ResolveIdentityAsync(context);
 
             // check white list
             if (_processor.IsWhitelisted(identity))
@@ -51,7 +52,7 @@ namespace AspNetCoreRateLimit
 
             foreach (var rule in rules)
             {
-                // increment counter		
+                // increment counter
                 var rateLimitCounter = await _processor.ProcessRequestAsync(identity, rule, context.RequestAborted);
 
                 if (rule.Limit > 0)
@@ -71,6 +72,11 @@ namespace AspNetCoreRateLimit
                         // log blocked request
                         LogBlockedRequest(context, identity, rateLimitCounter, rule);
 
+                        if (_options.RequestBlockedBehaviorAsync != null)
+                        {
+                            await _options.RequestBlockedBehaviorAsync(context, identity, rateLimitCounter, rule);
+                        }
+
                         // break execution
                         await ReturnQuotaExceededResponse(context, rule, retryAfter);
 
@@ -82,6 +88,11 @@ namespace AspNetCoreRateLimit
                 {
                     // log blocked request
                     LogBlockedRequest(context, identity, rateLimitCounter, rule);
+
+                    if (_options.RequestBlockedBehaviorAsync != null)
+                    {
+                        await _options.RequestBlockedBehaviorAsync(context, identity, rateLimitCounter, rule);
+                    }
 
                     // break execution (Int32 max used to represent infinity)
                     await ReturnQuotaExceededResponse(context, rule, int.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -106,16 +117,16 @@ namespace AspNetCoreRateLimit
             await _next.Invoke(context);
         }
 
-        public virtual ClientRequestIdentity ResolveIdentity(HttpContext httpContext)
+        public virtual async Task<ClientRequestIdentity> ResolveIdentityAsync(HttpContext httpContext)
         {
             string clientIp = null;
             string clientId = null;
 
             if (_config.ClientResolvers?.Any() == true)
             {
-                foreach(var resolver in _config.ClientResolvers)
+                foreach (var resolver in _config.ClientResolvers)
                 {
-                    clientId = resolver.ResolveClient();
+                    clientId = await resolver.ResolveClientAsync(httpContext);
 
                     if (!string.IsNullOrEmpty(clientId))
                     {
@@ -128,7 +139,7 @@ namespace AspNetCoreRateLimit
             {
                 foreach (var resolver in _config.IpResolvers)
                 {
-                    clientIp = resolver.ResolveIp();
+                    clientIp = resolver.ResolveIp(httpContext);
 
                     if (!string.IsNullOrEmpty(clientIp))
                     {
@@ -142,7 +153,7 @@ namespace AspNetCoreRateLimit
                 ClientIp = clientIp,
                 Path = httpContext.Request.Path.ToString().ToLowerInvariant(),
                 HttpVerb = httpContext.Request.Method.ToLowerInvariant(),
-                ClientId = clientId
+                ClientId = clientId ?? "anon"
             };
         }
 

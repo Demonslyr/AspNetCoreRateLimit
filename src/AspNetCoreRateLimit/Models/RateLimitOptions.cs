@@ -1,4 +1,7 @@
-﻿using System.Collections.Generic;
+﻿using Microsoft.AspNetCore.Http;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace AspNetCoreRateLimit
 {
@@ -8,8 +11,20 @@ namespace AspNetCoreRateLimit
 
         public List<string> EndpointWhitelist { get; set; }
 
+        /// <summary>
+        /// Gets or sets the HTTP header that holds the client identifier, by default is X-ClientId
+        /// </summary>
+        public string ClientIdHeader { get; set; } = "X-ClientId";
+
         public List<string> ClientWhitelist { get; set; }
-        
+
+        /// <summary>
+        /// Gets or sets the HTTP header of the real ip header injected by reverse proxy, by default is X-Real-IP
+        /// </summary>
+        public string RealIpHeader { get; set; } = "X-Real-IP";
+
+        public List<string> IpWhitelist { get; set; }
+
         /// <summary>
         /// Gets or sets the HTTP Status code returned when rate limiting occurs, by default value is set to 429 (Too Many Requests)
         /// </summary>
@@ -46,5 +61,15 @@ namespace AspNetCoreRateLimit
         /// Disables X-Rate-Limit and Rety-After headers
         /// </summary>
         public bool DisableRateLimitHeaders { get; set; }
+
+        /// <summary>
+        /// Enabled the comparison logic to use Regex instead of wildcards.
+        /// </summary>
+        public bool EnableRegexRuleMatching { get; set; }
+
+        /// <summary>
+        /// Gets or sets behavior after the request is blocked
+        /// </summary>
+        public Func<HttpContext, ClientRequestIdentity, RateLimitCounter, RateLimitRule, Task> RequestBlockedBehaviorAsync { get; set; }
     }
 }

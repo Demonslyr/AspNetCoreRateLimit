@@ -1,12 +1,27 @@
 ﻿using System;
+using System.Text.RegularExpressions;
 
 namespace AspNetCoreRateLimit
 {
     public static class Extensions
     {
-        public static bool IsWildcardMatch(this string source, string value)
+        public static bool IsUrlMatch(this string source, string value, bool useRegex)
+        {
+            if (useRegex)
+            {
+                return IsRegexMatch(source, value);
+            }
+            return source.IsWildCardMatch(value);
+        }
+
+        public static bool IsWildCardMatch(this string source, string value)
         {
             return source != null && value != null && source.ToLowerInvariant().IsMatch(value.ToLowerInvariant());
+        }
+
+        public static bool IsRegexMatch(this string source, string value)
+        {
+            return source != null && value != null && Regex.IsMatch(source, value, RegexOptions.IgnoreCase);
         }
 
         public static string RetryAfterFrom(this DateTime timestamp, RateLimitRule rule)
@@ -23,14 +38,14 @@ namespace AspNetCoreRateLimit
             var value = timeSpan.Substring(0, l);
             var type = timeSpan.Substring(l, 1);
 
-            switch (type)
+            return type switch
             {
-                case "d": return TimeSpan.FromDays(double.Parse(value));
-                case "h": return TimeSpan.FromHours(double.Parse(value));
-                case "m": return TimeSpan.FromMinutes(double.Parse(value));
-                case "s": return TimeSpan.FromSeconds(double.Parse(value));
-                default: throw new FormatException($"{timeSpan} can't be converted to TimeSpan, unknown type {type}");
-            }
+                "d" => TimeSpan.FromDays(double.Parse(value)),
+                "h" => TimeSpan.FromHours(double.Parse(value)),
+                "m" => TimeSpan.FromMinutes(double.Parse(value)),
+                "s" => TimeSpan.FromSeconds(double.Parse(value)),
+                _ => throw new FormatException($"{timeSpan} can't be converted to TimeSpan, unknown type {type}"),
+            };
         }
     }
 }

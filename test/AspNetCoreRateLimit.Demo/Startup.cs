@@ -26,7 +26,7 @@ namespace AspNetCoreRateLimit.Demo
             // needed to store rate limit counters and ip rules
             services.AddMemoryCache();
 
-            // configure ip rate limiting middle-ware
+            // configure ip rate limiting middleware
             services.Configure<IpRateLimitOptions>(Configuration.GetSection("IpRateLimiting"));
             services.Configure<IpRateLimitPolicies>(Configuration.GetSection("IpRateLimitPolicies"));
             services.AddSingleton<IIpPolicyStore, MemoryCacheIpPolicyStore>();
@@ -38,19 +38,12 @@ namespace AspNetCoreRateLimit.Demo
             services.AddSingleton<IClientPolicyStore, MemoryCacheClientPolicyStore>();
             //services.AddSingleton<IRateLimitCounterStore, MemoryCacheRateLimitCounterStore>();
 
-            var opt = new ClientRateLimitOptions();
-            Configuration.GetSection("ClientRateLimiting").Bind(opt);
-
             services.AddMvc((options) => 
             {
                 options.EnableEndpointRouting = false;
 
             }).AddNewtonsoftJson();
 
-            // https://github.com/aspnet/Hosting/issues/793
-            // the IHttpContextAccessor service is not registered by default.
-            // the clientId/clientIp resolvers use it.
-            services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
 
             // configure the resolvers
             services.AddSingleton<IRateLimitConfiguration, RateLimitConfiguration>();

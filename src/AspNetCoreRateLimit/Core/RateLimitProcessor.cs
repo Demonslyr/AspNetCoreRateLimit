@@ -38,10 +38,17 @@ namespace AspNetCoreRateLimit
                 return true;
             }
 
+            if (_options.IpWhitelist != null && IpParser.ContainsIp(_options.IpWhitelist, requestIdentity.ClientIp))
+            {
+                return true;
+            }
+
             if (_options.EndpointWhitelist != null && _options.EndpointWhitelist.Any())
             {
-                if (_options.EndpointWhitelist.Any(x => $"{requestIdentity.HttpVerb}:{requestIdentity.Path}".IsWildcardMatch(x)) ||
-                    _options.EndpointWhitelist.Any(x => $"*:{requestIdentity.Path}".IsWildcardMatch(x)))
+                string path = _options.EnableRegexRuleMatching ? $".+:{requestIdentity.Path}" : $"*:{requestIdentity.Path}";
+
+                if (_options.EndpointWhitelist.Any(x => $"{requestIdentity.HttpVerb}:{requestIdentity.Path}".IsUrlMatch(x, _options.EnableRegexRuleMatching)) ||
+                        _options.EndpointWhitelist.Any(x => path.IsUrlMatch(x, _options.EnableRegexRuleMatching)))
                     return true;
             }
 
@@ -123,12 +130,10 @@ namespace AspNetCoreRateLimit
 
             var bytes = Encoding.UTF8.GetBytes(key);
 
-            using (var algorithm = new SHA1Managed())
-            {
-                var hash = algorithm.ComputeHash(bytes);
+            using var algorithm = new SHA1Managed();
+            var hash = algorithm.ComputeHash(bytes);
 
-                return Convert.ToBase64String(hash);
-            }
+            return Convert.ToBase64String(hash);
         }
 
         protected virtual List<RateLimitRule> GetMatchingRules(ClientRequestIdentity identity, List<RateLimitRule> rules = null)
@@ -140,11 +145,14 @@ namespace AspNetCoreRateLimit
                 if (_options.EnableEndpointRateLimiting)
                 {
                     // search for rules with endpoints like "*" and "*:/matching_path"
-                    var pathLimits = rules.Where(r => $"*:{identity.Path}".IsWildcardMatch(r.Endpoint));
+
+                    string path = _options.EnableRegexRuleMatching ? $".+:{identity.Path}" : $"*:{identity.Path}";
+
+                    var pathLimits = rules.Where(r => path.IsUrlMatch(r.Endpoint, _options.EnableRegexRuleMatching));
                     limits.AddRange(pathLimits);
 
                     // search for rules with endpoints like "matching_verb:/matching_path"
-                    var verbLimits = rules.Where(r => $"{identity.HttpVerb}:{identity.Path}".IsWildcardMatch(r.Endpoint));
+                    var verbLimits = rules.Where(r => $"{identity.HttpVerb}:{identity.Path}".IsUrlMatch(r.Endpoint, _options.EnableRegexRuleMatching));
                     limits.AddRange(verbLimits);
                 }
                 else
@@ -166,11 +174,11 @@ namespace AspNetCoreRateLimit
                 if (_options.EnableEndpointRateLimiting)
                 {
                     // search for rules with endpoints like "*" and "*:/matching_path" in general rules
-                    var pathLimits = _options.GeneralRules.Where(r => $"*:{identity.Path}".IsWildcardMatch(r.Endpoint));
+                    var pathLimits = _options.GeneralRules.Where(r => $"*:{identity.Path}".IsUrlMatch(r.Endpoint, _options.EnableRegexRuleMatching));
                     matchingGeneralLimits.AddRange(pathLimits);
 
                     // search for rules with endpoints like "matching_verb:/matching_path" in general rules
-                    var verbLimits = _options.GeneralRules.Where(r => $"{identity.HttpVerb}:{identity.Path}".IsWildcardMatch(r.Endpoint));
+                    var verbLimits = _options.GeneralRules.Where(r => $"{identity.HttpVerb}:{identity.Path}".IsUrlMatch(r.Endpoint, _options.EnableRegexRuleMatching));
                     matchingGeneralLimits.AddRange(verbLimits);
                 }
                 else
@@ -199,8 +207,11 @@ namespace AspNetCoreRateLimit
 
             foreach (var item in limits)
             {
-                // parse period text into time spans
-                item.PeriodTimespan = item.Period.ToTimeSpan();
+                if (!item.PeriodTimespan.HasValue)
+                {
+                    // parse period text into time spans	
+                    item.PeriodTimespan = item.Period.ToTimeSpan();
+                }
             }
 
             limits = limits.OrderBy(l => l.PeriodTimespan).ToList();
